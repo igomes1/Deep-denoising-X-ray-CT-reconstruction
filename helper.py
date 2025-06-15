@@ -6,45 +6,51 @@ import scipy as sc
 import matplotlib.pyplot as plt
 import skimage as ski
 from pathlib import Path
+from tqdm import tqdm
+import equinox as eqx
+
+# global variable
+img = ski.io.imread('data/img/concrete_surface.jpeg').astype(np.float32)
+img = ski.color.rgb2gray(img)[:340, :340]
+disk_img = np.zeros(img.shape)
+disk_coord = ski.draw.disk((img.shape[0]//2,img.shape[1]//2), 150)
+disk_img[disk_coord] = 1
 
 
-
-# gaussian kernel of shape (2k+1)*(2k+1) 
-def get_2D_Gaussian_kernel(sigma_h):
-    k = int(np.ceil(3*sigma_h))
-    # 1D kernel
-    kernel_1D = np.exp(-np.arange(-k, k+1)**2 / (2 * sigma_h**2))
-    # normalisation
-    kernel_1D /= kernel_1D.sum() 
-    # 2D kernel
-    kernel_2D = kernel_1D.reshape(-1, 1) @ kernel_1D.reshape(1, -1)
-    return kernel_2D
-
-# transform kernel (of shape (2k+1) x (2k+1)) to have same shape of the img to which it's applied with periodic boundary condition
-def kernel_to_image(kernel, img):
-    img_kernel = np.zeros(img.shape)
-    k = kernel.shape[0] // 2
-    img_kernel[:(2*k+1), :(2*k+1)] = kernel
-    img_kernel = np.roll(img_kernel, (-k, -k), axis=(0, 1))
-    return img_kernel
-
+##################################################################################################################################################
+# Forward/backward Operations + filters
 @jax.jit
-def rotate_image(image, angle):# angle in degree
-    angle_rad = -angle * jnp.pi / 180  # Conversion en radians
+def rotate_image(image, angle):
+    """
+    Rotate a 2D grayscale image by a specified angle.
+
+    Parameters
+    ----------
+    image : jax.numpy.ndarray
+        2D array representing the grayscale image to rotate.
+    angle : float
+        Rotation angle in degrees. Positive values correspond to counter-clockwise rotation.
+
+    Returns
+    -------
+    rotated : jax.numpy.ndarray
+        Rotated 2D image.
+    """
+    angle_rad = -angle * jnp.pi / 180  
     
-    # Coordonnées des pixels
+    # Pixel coord.
     H, W = image.shape
     x, y = jnp.meshgrid(jnp.arange(W), jnp.arange(H))
     x = x - W // 2
     y = y - H // 2
     
-    # Matrice de rotation
+    # Rotational matrix
     cos_theta = jnp.cos(angle_rad)
     sin_theta = jnp.sin(angle_rad)
     x_rot = cos_theta * x - sin_theta * y + W // 2
     y_rot = sin_theta * x + cos_theta * y + H // 2
     
-    # Interpolation bilinéaire
+    # Bilinear interpolation
     x0 = jnp.clip(jnp.floor(x_rot).astype(int), 0, W - 1)
     x1 = jnp.clip(x0 + 1, 0, W - 1)
     y0 = jnp.clip(jnp.floor(y_rot).astype(int), 0, H - 1)
@@ -64,10 +70,25 @@ def rotate_image(image, angle):# angle in degree
     return rotated
 
 
-####### should maybe normalize it before to return sinogram !!!
-@jax.jit
-def radon_transform(img, angles): # angle in degree
 
+@jax.jit
+def radon_transform(img, angles): 
+    """
+    Compute the Radon transform (sinogram) of a 2D grayscale image for a set of projection angles.
+
+    Parameters
+    ----------
+    img : jax.numpy.ndarray
+        2D array representing the grayscale input image.
+    angles : array-like
+        Sequence of projection angles in degrees.
+
+    Returns
+    -------
+    sinogram : jax.numpy.ndarray
+        2D array of shape (L, len(angles)), where L is the diagonal length of the image.
+        Each column contains the projection of the image at the corresponding angle.
+    """
     dim_x, dim_y = img.shape
     diag = int(np.ceil(np.sqrt(dim_x**2 + dim_y**2)))  
 
@@ -77,29 +98,38 @@ def radon_transform(img, angles): # angle in degree
     # Center the img inside padded_img
     offset_x = (diag - dim_x) // 2
     offset_y = (diag - dim_y) // 2
-    # padded_image[offset_x:offset_x + dim_x, offset_y:offset_y + dim_y] = img
     padded_image = padded_image.at[offset_x:offset_x + dim_x, offset_y:offset_y + dim_y].set(img)
 
    
-    # projection
+    # projections
     sinogram = jnp.zeros((diag, len(angles)))  
     for i, angle in enumerate(angles):
-        # rotated = jnp.array(sc.ndimage.rotate(padded_image, -angle, reshape=False))
-        # rotated = dm_pix.rotate(jnp.expand_dims(padded_image, axis=-1), -angle*np.pi/180, order = 1, mode='constant')[:,:,0]
         rotated = rotate_image(padded_image, angle)
-        
         sinogram = sinogram.at[:,i].set(rotated.sum(axis=1))
-
-    # # normalize
-    # sinogram = sinogram.clip(0, None) 
-    # sinogram = (sinogram - sinogram.min()) / jnp.ptp(sinogram)
 
     return sinogram
 
-# Define functions for reconstruction 
 
-# Filtered back projection
-def ramp_fourier_filter(size, filter_name =None): # took from sckit-image radon transform module
+
+
+def ramp_fourier_filter(size, filter_name =None): 
+    """Construct the ramp (Ram-Lak) filter in Fourrier domain. With optional modifications such as a cosine window.
+    Taken from https://github.com/scikit-image/scikit-image/blob/v0.25.2/skimage/transform/radon_transform.py#L127
+
+    Parameters
+    ----------
+    size : int
+        filter size. Must be even.
+    filter_name : str or None, optional
+        If None, the pure ramp filter is returned.
+        If 'cosine', a cosine window is applied. 
+
+    Returns
+    -------
+    fourier_filter: ndarray
+        The computed Fourier filter.
+    """
+
     n = np.concatenate(
         (
             np.arange(1, size / 2 + 1, 2, dtype=int),
@@ -110,9 +140,9 @@ def ramp_fourier_filter(size, filter_name =None): # took from sckit-image radon 
     f[0] = 0.25
     f[1::2] = -1 / (np.pi * n) ** 2
 
-    fourier_filter = 2 * np.real(sc.fft.fft(f))  # ramp filter
+    fourier_filter = 2 * np.real(sc.fft.fft(f))  
 
-    # if we want a modification of the filter --->from skimage too
+    # if we want a modification of the filter ---> cosine filter 
     if filter_name == "cosine":
         freq = np.linspace(0, np.pi, size, endpoint=False)
         cosine_filter = sc.fft.fftshift(np.sin(freq)) 
@@ -121,15 +151,31 @@ def ramp_fourier_filter(size, filter_name =None): # took from sckit-image radon 
     return fourier_filter[:, np.newaxis]
     
 
-def nimp():
-    print(3)
 
-# Filter
-def fbp_par(sinogramm, angles, output_size, subsampling = False, sub_sampled_angles = None, filter_name = None): # angles in degree
-    
-    # normelize sinogramm
-    # sinogramm = (sinogramm - sinogramm.min()) / np.ptp(sinogramm) 
-    
+
+def fbp_par(sinogramm, angles, output_size, filter_name = None):
+    """
+    Perform Filtered Backprojection (FBP) reconstruction from a sinogram using parallel beam geometry.
+
+    Parameters
+    ----------
+    sinogramm : ndarray of shape (N, M)
+        Input sinogram where N is the number of detector pixels and M is the number of projection angles.
+    angles : array-like of float
+        List or array of projection angles in degrees.
+    output_size : int
+        Size (height and width) of the reconstructed square image.
+    filter_name : str or None, optional
+        Name of the filter applied in the Fourier domain.
+        If None, a standard ramp filter is used.
+        If 'cosine', a ramp filter with cosine window is applied.
+
+    Returns
+    -------
+    recons_img : ndarray of shape (output_size, output_size)
+        The reconstructed 2D image.
+    """
+        
     sino_shape = sinogramm.shape[0]
 
     #resize sinogramm next power of two for fourrier analyses
@@ -142,42 +188,567 @@ def fbp_par(sinogramm, angles, output_size, subsampling = False, sub_sampled_ang
     fourier_filter = ramp_fourier_filter(projection_size_padded, filter_name)
     projection = sc.fft.fft(sinogramm_padded, axis=0) * fourier_filter
     sinogramm_filtered = np.real(sc.fft.ifft(projection, axis=0)[:sino_shape, :])
-    # sinogramm_filtered = sinogramm
+    
 
 
     # back projection 
     recons_img = np.zeros((output_size, output_size))
     center = output_size//2
     xpr, ypr = np.mgrid[:output_size, :output_size] - center
-    x = np.arange(sino_shape) - sino_shape // 2 # t
+    x = np.arange(sino_shape) - sino_shape // 2 
     for col, angle in zip(sinogramm_filtered.T, angles):
-        if not subsampling:
-            t = xpr * np.cos(angle*np.pi/180) + ypr * np.sin(angle*np.pi/180) # t here is a matrix where the value of t[x,y] = t(x,y)
+        t = xpr * np.cos(angle*np.pi/180) + ypr * np.sin(angle*np.pi/180) # t here is a matrix where the value of t[x,y] = t(x,y)
 
-            # use linear interpolation
-            # print(np.interp(t, xp=x, fp=col, left=0, right=0).shape)
-            recons_img += np.interp(t, xp=x, fp=col, left=0, right=0)
-        else:
-            if angle in sub_sampled_angles:
-                t = xpr * np.cos(angle*np.pi/180) + ypr * np.sin(angle*np.pi/180) # t here is a matrix where the value of t[x,y] = t(x,y)
-
-                # use linear interpolation
-                # print(np.interp(t, xp=x, fp=col, left=0, right=0).shape)
-                recons_img += np.interp(t, xp=x, fp=col, left=0, right=0)
+        # use linear interpolation
+        recons_img += np.interp(t, xp=x, fp=col, left=0, right=0)
 
     return recons_img*np.pi/(2*len(angles))
-    # return recons_img
+    
 
-def SNR(s, s_hat):
+
+##################################################################################################################################################
+# Model-based algorithm 
+
+class Model_Beam_par(eqx.Module):
+    """
+    Tomographic forward operator using the parallel-beam Radon transform.
+
+    This model represents the forward operator R(x), which computes the
+    Radon transform of an input image `x` over a set of projection angles.
+
+    Attributes
+    ----------
+    angles : jnp.ndarray
+        Array of projection angles in degrees, used to compute the sinogram.
+
+    Methods
+    -------
+    __call__(x):
+        Applies the Radon transform to the input image `x` using the specified angles.
+    """
+    angles: jnp.ndarray 
+
+    def __init__(self, angles):
+        self.angles = angles
+
+    def __call__(self, x):
+        Rx = radon_transform(x, self.angles)
+        return Rx
+    
+
+
+@jax.jit
+def loss_L2(x, y, R):
+    """
+    Computes the squared Frobenius norm loss between the measured/target sinogram y
+    and the projection R(x).
+
+    Parameters
+    ----------
+    x : jnp.ndarray
+        Reconstructed image (estimate).
+    y : jnp.ndarray
+        Measured sinogram (target).
+    R : Callable
+        Forward operator (e.g., an instance of Model_Beam_par) that maps x to its sinogram.
+
+    Returns
+    -------
+    float
+        Squared L2 loss (Frobenius norm) between y and R(x).
+    """ 
+    loss = jnp.linalg.norm(y-R(x), ord = 'fro')**2
+    return loss
+
+@jax.jit
+def GD_step(x, y, R, alpha): 
+    """
+    Performs one step of gradient descent on the L2 loss.
+
+    Parameters
+    ----------
+    x : jnp.ndarray
+        Current estimate of the image.
+    y : jnp.ndarray
+        Measured sinogram (target).
+    R : Callable
+        Forward operator (e.g., Model_Beam_par).
+    alpha : float
+        Step size. 
+
+    Returns
+    -------
+    loss_val : float
+        Value of the loss function at current x.
+    x_new : jnp.ndarray
+        Updated estimated image after one gradient descent step.
+    """
+    loss_val, grads_val = jax.value_and_grad(loss_L2)(x, y, R)
+    
+    # GD update
+    x_new = x - alpha * grads_val
+
+    return loss_val, x_new
+
+
+@jax.jit
+def PGD_pos_supp_step(x, y, R, alpha): 
+    """
+    Performs one step of Proximal Gradient Descent (PGD) with
+    support and positivity constraints.
+
+    Parameters
+    ----------
+    x : jnp.ndarray
+        Current estimate of the image.
+    y : jnp.ndarray
+        Measured sinogram (target).
+    R : Callable
+        Forward operator (e.g., Model_Beam_par).
+    alpha : float
+        Step size. 
+
+    Returns
+    -------
+    loss_val : float
+        Value of the loss function at current x.
+    x_new : jnp.ndarray
+        Updated estimated image after one PGD step.
+    """
+    
+    loss_val, grads_val = jax.value_and_grad(loss_L2)(x, y, R)
+    
+    # GD update
+    x_new = x - alpha * grads_val
+
+    # support constraint
+    x_new = x_new*disk_img
+    
+    # positivity constraint 
+    x_new = x_new.clip(0, None)
+
+    return loss_val, x_new
+
+
+
+@jax.jit
+def loss_L2_rL2(x, y, R, lam): 
+    """
+    Computes the L2 loss (LS) with L2 (Tikhonov) regularization.
+
+    Parameters
+    ----------
+    x : jnp.ndarray
+        Current estimate of the image.
+    y : jnp.ndarray
+        Measured sinogram (target).
+    R : Callable
+        Forward operator (e.g., Model_Beam_par).
+    lam : float
+        Regularization weight.
+
+    Returns
+    -------
+    loss : float
+        Tikhonov regularized L2 loss value.
+    """
+    loss = jnp.linalg.norm(y-R(x), ord = 'fro')**2 + lam*jnp.linalg.norm(x)**2
+    return loss
+
+@jax.jit
+def PGD_pos_supp_rL2_step(x, y, R, alpha, lam): 
+    """
+    Performs one proximal gradient descent step with Tikhonov (L2) regularization, 
+    positivity and support constraints.
+
+    Parameters
+    ----------
+    x : jnp.ndarray
+        Current estimate of the image.
+    y : jnp.ndarray
+        Measured sinogram (target).
+    R : Callable
+        Forward operator (e.g., Model_Beam_par).
+    alpha : float
+        Step size.
+    lam : float
+        Regularization weight.
+
+    Returns
+    -------
+    loss_val : float
+        Value of the loss function at current x.
+    x_new : jnp.ndarray
+        Updated estimated image after one PGD step.
+    """
+    
+    loss_val, grads_val = jax.value_and_grad(loss_L2_rL2)(x, y, R, lam)
+    
+    # GD update
+    x_new = x - alpha * grads_val
+
+    # support constraint
+    x_new = x_new*disk_img
+
+    # positivity constraint 
+    x_new = x_new.clip(0, None)
+    
+    return loss_val, x_new
+
+
+@jax.jit
+def TV(x): 
+    """
+    Compute the discrete Total Variation (TV) norm of a 2D image.
+
+    The TV is approximated using forward finite differences along 
+    both horizontal (x) and vertical (y) directions. The boundary 
+    gradients are set to zero due to the forward difference scheme.
+
+    Parameters
+    ----------
+    x : jnp.ndarray
+        2D input image array.
+
+    Returns
+    -------
+    float
+        The total variation norm.
+    """
+
+    # use forward difference to compute grad_x and grad_y 
+    grad_x = jnp.roll(x, -1, axis=1) - x
+    grad_x = grad_x.at[:,-1].set(0) # (due to forward differences approx)
+
+    grad_y = jnp.roll(x, -1, axis=0) - x
+    grad_y = grad_y.at[-1].set(0) # (due to forward differences approx)
+
+    # compute l1 norm of grad(.) 
+    gx= jnp.sum(jnp.abs(grad_x)) + jnp.sum(jnp.abs(grad_y))
+    return gx
+
+
+@jax.jit
+def loss_rTV(x, y, R, lam):
+    """
+    Compute the combined loss: L2 data fidelity term (LS) + weighted Total Variation regularization.
+
+    Parameters
+    ----------
+    x : jnp.ndarray
+        Current estimate of the image.
+    y : jnp.ndarray
+        Measured sinogram (target).
+    R : callable
+        Forward operator (e.g., Model_Beam_par).
+    lam : float
+        Regularization weight.
+
+    Returns
+    -------
+    float
+        Value of the regularized TV loss.
+    """
+    Fx = loss_L2(x, y, R) + lam* TV(x)
+    return Fx
+
+
+@jax.jit
+def PGD_pos_supp_rTV_step(x, y, R, alpha, lam):  
+    """
+    Performs one proximal gradient descent step with TV regularization, 
+    positivity and support constraints.
+
+    Parameters
+    ----------
+    x : jnp.ndarray
+        Current estimate of the image.
+    y : jnp.ndarray
+        Measured sinogram (target).
+    R : Callable
+        Forward operator (e.g., Model_Beam_par).
+    alpha : float
+        Step size.
+    lam : float
+        Regularization weight.
+
+    Returns
+    -------
+    loss_val : float
+        Value of the loss function at current x.
+    x_new : jnp.ndarray
+        Updated estimated image after one PGD step.
+    """
+    loss_val, grads_val = jax.value_and_grad(loss_rTV)(x, y, R, lam)
+    
+    # GD update
+    x_new = x - alpha * grads_val
+
+    # support constraint
+    x_new = x_new*disk_img
+
+    # positivity constraint 
+    x_new = x_new.clip(0, None)
+
+    return loss_val, x_new  
+
+
+class Optimizer:
+    """
+    Class to perform iterative optimization for model based tomographic reconstruction.
+
+    Attributes
+    ----------
+    angles : jnp.ndarray
+        Array of projection angles in degrees.
+    x : jnp.ndarray
+        Current estimate of the image.
+    y : jnp.ndarray
+         Measured sinogram (target).
+    R : Callable
+        Forward operator (e.g., Model_Beam_par).
+    solver : callable
+        Optimization step function performing one update of x.
+    alpha : float
+        Step size.
+    lam : float or None
+        Regularization weight, if applicable.
+    n_iter : int
+        Number of iterations to run the optimization.
+
+    Constructor parameters 
+    ----------
+    x_init : array-like
+        Initial guess for the reconstructed image.
+    y : array-like
+        Measured sinogram (target).
+    nbr_angles : int
+        Number of projection angles between [0,180) degrees.
+    solver : callable
+        Optimization step function. Should have signature
+        `solver(x, y, R, alpha)` or `solver(x, y, R, alpha, lam)`.
+    alpha : float, optional
+        Step size for the solver. Default is 1e-5.
+    lam : float or None, optional
+        Regularization weight passed to the solver if applicable. Default is None.
+    n_iter : int, optional
+        Number of iterations to run. Default is 360.
+
+    Methods
+    -------
+    solve()
+        Runs the iterative optimization for `n_iter` steps and returns the list of losses and final reconstruction.
+    """
+    angles: jnp.ndarray 
+    x: jnp.ndarray
+    y: jnp.ndarray
+    R: Model_Beam_par
+    solver: callable
+    alpha: float
+    lam: float 
+    n_iter: int  
+
+
+    def __init__(self, x_init, y, nbr_angles, solver,  alpha = 1e-5, lam = None, n_iter=360):
+        # forward pass parameters
+        angle_space = 180/nbr_angles
+        self.angles = jnp.arange(0,180, angle_space)  
+        self.R = Model_Beam_par(self.angles)
+
+        # optimization parameters
+        self.x = jnp.array(x_init)
+        self.y = jnp.array(y) 
+        self.solver = solver
+        self.alpha = alpha
+        self.lam = lam
+        self.n_iter = n_iter
+
+        # init solver
+        if self.lam is None:
+            _ = self.solver(self.x, self.y, self.R, self.alpha) 
+        else:
+            _ = self.solver(self.x, self.y, self.R, self.alpha, self.lam) 
+
+    def solve(self):
+        losses = []
+        x = self.x
+        for _ in tqdm(range(self.n_iter)):
+            if self.lam is None:
+                loss_val, x = self.solver(x, self.y, self.R, self.alpha) 
+            else: 
+                loss_val, x = self.solver(x, self.y, self.R, self.alpha, self.lam) 
+            losses.append(loss_val)
+        
+        return losses, x
+    
+
+    
+##################################################################################################################################################
+# Metrics
+def SNR(s, s_hat, normalize = True):
+    """
+    Compute the Signal-to-Noise Ratio (SNR) between a reference image and a reconstructed (or noisy) version.
+
+    Parameters
+    ----------
+    s : ndarray
+        Ground truth (reference) image.
+    s_hat : ndarray
+        Estimated or reconstructed image to compare with the reference.
+    normalize : bool, default = True 
+        input images are normalized to [0, 1] before computing the SNR
+
+    Returns
+    -------
+    snr : float
+        Signal-to-Noise Ratio in decibels (dB).
+    """
+    if normalize:
+        s = normalize_img(s)
+        s_hat = normalize_img((s_hat))
     snr = 10*np.log10(np.sum(s**2)/np.sum((s - s_hat)**2))
     return snr
 
+def CNR(img, highlight = False):
+    """
+    Compute the Contrast-to-Noise Ratio (CNR) for predefined foreground/background regions in a normalized image.
+
+    The CNR is computed for three pairs of regions of interest (foreground/background).
+    Optionally, the selected areas can be highlighted in the output image.
+
+    Parameters
+    ----------
+    img : array-like
+        Input 2D image array.
+
+    highlight : bool, optional (default is False)
+        If True, return a copy of the image with selected regions highlighted (value set to 1).
+
+    Returns
+    -------
+    list of float or tuple
+        If `highlight` is False:
+            List of CNR values for the three foreground/background region pairs.
+        If `highlight` is True:
+            Tuple `(img_norm, CNR_list)` where `img_norm` is the normalised image with selected regions set to 1,
+            and `CNR_list` is the list of CNR values.
+    
+    Notes
+    -----
+    - The image is first normalized to [0, 1] using `normalize_img()`.
+    - Foreground and background coordinates are hardcoded for each of the three cases.
+    - The noise is estimated as the standard deviation in the background region.
+    """
+    CNR_list = []
+    size = 10
+    img_norm = np.array(normalize_img(img))
+    for case in [0,1,2]:
+        # select index area
+        if case == 0:
+            # foreground
+            x1 = 95
+            y1 = 190
+
+            # background
+            x2 =115
+            y2 = 175
+
+        if case == 1:
+            # foreground
+            x1 = 222
+            y1 = 292
+
+            # background
+            x2 = 237
+            y2 = 264
+
+        if case == 2:
+            # foreground
+            x1 = 205
+            y1 = 225
+
+            # background
+            x2 = 222
+            y2 = 204
+
+        
+        # compute CNR
+        area1 = img_norm[y1:y1+size, x1:x1+size]
+        mean_area1 = area1.mean()
+        
+        area2 = img_norm[y2:y2+size, x2:x2+size]
+        mean_area2 = area2.mean()
+        
+        std_noise = area2.std()
+        
+        CNR = np.abs(mean_area1 - mean_area2) / std_noise
+        CNR_list.append(CNR)
+
+        if highlight:
+            # highlight areas 
+            img_norm[y1:y1+size, x1:x1+size] = 1
+            img_norm[y2:y2+size, x2:x2+size] = 1
+        
+    if highlight:
+        return img_norm, CNR_list
+
+
+    return CNR_list
+
+
+
+
+##################################################################################################################################################
+# Formatting results 
 def normalize_img(img):
-    img = img.clip(0, None) 
-    img = (img - img.min()) / jnp.ptp(img)
-    return img 
+    """
+    Normalize an image to the range [0, 1].
+
+    Parameters
+    ----------
+    img : ndarray
+        Input image to be normalized. Values below 0 are clipped.
+
+    Returns
+    -------
+    img_normalized : ndarray
+        Image with values scaled to the range [0, 1].
+    """
+    img_normalized = img.clip(0, None) 
+    img_normalized = (img_normalized - img_normalized.min()) / jnp.ptp(img_normalized)
+    return img_normalized 
+
+def quant_res(target_img, rcst):
+    """
+    Utility function designed to simplify the notebook by printing quantitative 
+    image metrics (CNR and SNR) between the target and reconstructed images
+    """
+    CNR_list = CNR(rcst) 
+    SNR_val = SNR(target_img, rcst)
+    print(f'CNR values: {CNR_list}, mean: {np.mean(CNR_list)}')
+    print(f'SNR : {SNR_val} dB')
+  
+def summary_quant_res(target_img, rcst_FBP, rcst_SP, rcst_ML, noise_case):
+    """
+    Utility function created to simplify the notebook by grouping the display 
+    of quantitative results (SNR and CNR) for different reconstruction methods.
+    """
+    print(f'{noise_case} noise level:')
+    print('Only FBP')
+    quant_res(target_img, rcst_FBP)
+    print(20*'-')
+    print('SP approach')
+    quant_res(target_img, rcst_SP)
+    print(20*'-')
+    print('ML approach')
+    quant_res(target_img, rcst_ML)
+    if noise_case == 'Low':
+        print(60*'-')
 
 
+
+##################################################################################################################################################
+# Dataset generation
 def gen_img(shape, pattern, nbr_patterns ,seed, texture_scale, show = True): 
     """
     Generate 2D grayscale image with randomly oriented textured pattern.
