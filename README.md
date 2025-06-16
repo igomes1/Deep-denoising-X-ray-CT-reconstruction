@@ -21,6 +21,12 @@ Includes the input images used in the `CT-reconstruction.ipynb` notebook for tes
 ### `maxim/`
 Holds the pretrained **MAXIM neural network**, used for both **pre-processing** and **post-processing** denoising approaches.
 
+### `report_latex/`
+Contains the LaTeX source files used to compile the report.
+
+### `report.pdf`
+Final report of the project.
+
 ### `CT-reconstruction.ipynb`
 Main notebook of the project. It contains all the experimental results, including reconstructions, evaluations (CNR, SNR), and comparisons of all methods discussed in the report.
 
