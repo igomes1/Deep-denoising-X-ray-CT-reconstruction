@@ -1,0 +1,125 @@
+
+@misc{brian_x-ray_2020,
+	title = {X-ray {Contrast} {To} {Noise} ({CNR}) {Illustrated} {Examples} {Of} {Image} {Noise} ({SNR}, {Quantum} {Mottle}) {For} {Radiologic} {Technologists} • {How} {Radiology} {Works}},
+	url = {https://howradiologyworks.com/x-ray-cnr/},
+	abstract = {The Contrast to Noise Ratio (CNR) in a medical image is a measure of the contrast between the tissue of interest and the background (i.e. the neighboring},
+	language = {en-US},
+	author = {Brian, Nett},
+	month = may,
+	year = {2020},
+	note = {Section: Physics},
+}
+
+@article{arbelaez_contour_2011,
+	title = {Contour {Detection} and {Hierarchical} {Image} {Segmentation}},
+	volume = {33},
+	copyright = {https://ieeexplore.ieee.org/Xplorehelp/downloads/license-information/IEEE.html},
+	issn = {0162-8828, 2160-9292},
+	url = {http://ieeexplore.ieee.org/document/5557884/},
+	doi = {10.1109/TPAMI.2010.161},
+	abstract = {This paper investigates two fundamental problems in computer vision: contour detection and image segmentation. We present state-of-the-art algorithms for both of these tasks. Our contour detector combines multiple local cues into a globalization framework based on spectral clustering. Our segmentation algorithm consists of generic machinery for transforming the output of any contour detector into a hierarchical region tree. In this manner, we reduce the problem of image segmentation to that of contour detection. Extensive experimental evaluation demonstrates that both our contour detection and segmentation methods signiﬁcantly outperform competing algorithms. The automatically generated hierarchical segmentations can be interactively reﬁned by userspeciﬁed annotations. Computation at multiple image resolutions provides a means of coupling our system to recognition applications.},
+	language = {en},
+	number = {5},
+	journal = {IEEE Transactions on Pattern Analysis and Machine Intelligence},
+	author = {Arbeláez, P and Maire, M and Fowlkes, C and Malik, J},
+	month = may,
+	year = {2011},
+	pages = {898--916},
+}
+
+@article{tan_deep_2024,
+	title = {Deep {Filtered} {Back} {Projection} for {CT} {Reconstruction}},
+	volume = {12},
+	issn = {2169-3536},
+	url = {https://ieeexplore.ieee.org/document/10411896/},
+	doi = {10.1109/ACCESS.2024.3357355},
+	abstract = {Filtered back projection (FBP) is a classic analytical algorithm for computed tomography (CT) reconstruction, with high computational efficiency. However, images reconstructed by FBP often suffer from excessive noise and artifacts. The original FBP algorithm uses a window function to smooth signals and a linear interpolation to estimate projection values at un-sampled locations. In this study, we propose a novel framework named DeepFBP in which an optimized filter and an optimized nonlinear interpolation operator are learned with neural networks. Specifically, the learned filter can be considered as the product of an optimized window function and the ramp filter, and the learned interpolation can be considered as an optimized way to utilize projection information of nearby locations through nonlinear combination. The proposed method remains the high computational efficiency of the original FBP and achieves much better reconstruction quality at different noise levels. It also outperforms the TV-based statistical iterative algorithm, with computational time being reduced in an order of two, and state-of-the-art post-processing deep learning methods that have deeper and more complicated network structures.},
+	journal = {IEEE Access},
+	author = {Tan, Xi and Liu, Xuan and Xiang, Kai and Wang, Jing and Tan, Shan},
+	year = {2024},
+	keywords = {Analytical reconstruction, Computed tomography, Deep learning, FBP, Filtering algorithms, Image reconstruction, Information filters, Interpolation, Iterative algorithms, deep learning, neural network},
+	pages = {20962--20972},
+}
+
+@article{koetzier_deep_2023,
+	title = {Deep {Learning} {Image} {Reconstruction} for {CT}: {Technical} {Principles} and {Clinical} {Prospects}},
+	volume = {306},
+	issn = {0033-8419},
+	shorttitle = {Deep {Learning} {Image} {Reconstruction} for {CT}},
+	url = {https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9968777/},
+	doi = {10.1148/radiol.221257},
+	abstract = {Filtered back projection (FBP) has been the standard CT image reconstruction
+method for 4 decades. A simple, fast, and reliable technique, FBP has delivered
+high-quality images in several clinical applications. However, with faster and
+more advanced CT scanners, FBP has become increasingly obsolete. Higher image
+noise and more artifacts are especially noticeable in lower-dose CT imaging
+using FBP. This performance gap was partly addressed by model-based iterative
+reconstruction (MBIR). Yet, its “plastic” image appearance and
+long reconstruction times have limited widespread application. Hybrid iterative
+reconstruction partially addressed these limitations by blending FBP with MBIR
+and is currently the state-of-the-art reconstruction technique. In the past 5
+years, deep learning reconstruction (DLR) techniques have become increasingly
+popular. DLR uses artificial intelligence to reconstruct high-quality images
+from lower-dose CT faster than MBIR. However, the performance of DLR algorithms
+relies on the quality of data used for model training. Higher-quality training
+data will become available with photon-counting CT scanners. At the same time,
+spectral data would greatly benefit from the computational abilities of DLR.
+This review presents an overview of the principles, technical approaches, and
+clinical applications of DLR, including metal artifact reduction algorithms. In
+addition, emerging applications and prospects are discussed., © RSNA, 2023},
+	number = {3},
+	journal = {Radiology},
+	author = {Koetzier, Lennart R. and Mastrodicasa, Domenico and Szczykutowicz, Timothy P. and van der Werf, Niels R. and Wang, Adam S. and Sandfort, Veit and van der Molen, Aart J. and Fleischmann, Dominik and Willemink, Martin J.},
+	month = jan,
+	year = {2023},
+	pmid = {36719287},
+	pmcid = {PMC9968777},
+	pages = {e221257},
+}
+
+@misc{tu_maxim_2022,
+	title = {{MAXIM}: {Multi}-{Axis} {MLP} for {Image} {Processing}},
+	shorttitle = {{MAXIM}},
+	url = {http://arxiv.org/abs/2201.02973},
+	doi = {10.48550/arXiv.2201.02973},
+	abstract = {Recent progress on Transformers and multi-layer perceptron (MLP) models provide new network architectural designs for computer vision tasks. Although these models proved to be effective in many vision tasks such as image recognition, there remain challenges in adapting them for low-level vision. The inflexibility to support high-resolution images and limitations of local attention are perhaps the main bottlenecks. In this work, we present a multi-axis MLP based architecture called MAXIM, that can serve as an efficient and flexible general-purpose vision backbone for image processing tasks. MAXIM uses a UNet-shaped hierarchical structure and supports long-range interactions enabled by spatially-gated MLPs. Specifically, MAXIM contains two MLP-based building blocks: a multi-axis gated MLP that allows for efficient and scalable spatial mixing of local and global visual cues, and a cross-gating block, an alternative to cross-attention, which accounts for cross-feature conditioning. Both these modules are exclusively based on MLPs, but also benefit from being both global and `fully-convolutional', two properties that are desirable for image processing. Our extensive experimental results show that the proposed MAXIM model achieves state-of-the-art performance on more than ten benchmarks across a range of image processing tasks, including denoising, deblurring, deraining, dehazing, and enhancement while requiring fewer or comparable numbers of parameters and FLOPs than competitive models. The source code and trained models will be available at {\textbackslash}url\{https://github.com/google-research/maxim\}.},
+	publisher = {arXiv},
+	author = {Tu, Zhengzhong and Talebi, Hossein and Zhang, Han and Yang, Feng and Milanfar, Peyman and Bovik, Alan and Li, Yinxiao},
+	month = apr,
+	year = {2022},
+	note = {arXiv:2201.02973 [eess]},
+	keywords = {Computer Science - Computer Vision and Pattern Recognition, Electrical Engineering and Systems Science - Image and Video Processing},
+}
+
+@article{karl_foundations_2023,
+	title = {The {Foundations} of {Computational} {Imaging}: {A} signal processing perspective},
+	volume = {40},
+	copyright = {https://ieeexplore.ieee.org/Xplorehelp/downloads/license-information/IEEE.html},
+	issn = {1053-5888, 1558-0792},
+	shorttitle = {The {Foundations} of {Computational} {Imaging}},
+	url = {https://ieeexplore.ieee.org/document/10188909/},
+	doi = {10.1109/MSP.2023.3274328},
+	language = {en},
+	number = {5},
+	journal = {IEEE Signal Processing Magazine},
+	author = {Karl, W. Clem and Fowler, James E. and Bouman, Charles A. and Çetin, Müjdat and Wohlberg, Brendt and Ye, Jong Chul},
+	month = jul,
+	year = {2023},
+	pages = {40--53},
+}
+
+@article{goujon_learning_2024,
+	title = {Learning {Weakly} {Convex} {Regularizers} for {Convergent} {Image}-{Reconstruction} {Algorithms}},
+	volume = {17},
+	issn = {1936-4954},
+	url = {https://epubs.siam.org/doi/10.1137/23M1565243},
+	doi = {10.1137/23M1565243},
+	abstract = {We propose to learn non-convex regularizers with a prescribed upper bound on their weak-convexity modulus. Such regularizers give rise to variational denoisers that minimize a convex energy. They rely on few parameters (less than 15,000) and offer a signal-processing interpretation as they mimic handcrafted sparsity-promoting regularizers. Through numerical experiments, we show that such denoisers outperform convex-regularization methods as well as the popular BM3D denoiser. Additionally, the learned regularizer can be deployed to solve inverse problems with iterative schemes that provably converge. For both CT and MRI reconstruction, the regularizer generalizes well and offers an excellent tradeoff between performance, number of parameters, guarantees, and interpretability when compared to other data-driven approaches.},
+	language = {en},
+	number = {1},
+	journal = {SIAM Journal on Imaging Sciences},
+	author = {Goujon, Alexis and Neumayer, Sebastian and Unser, Michael},
+	month = mar,
+	year = {2024},
+	pages = {91--115},
+}
